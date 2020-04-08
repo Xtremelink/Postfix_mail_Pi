@@ -1,5 +1,8 @@
-Know your ip uing ifconfig cmd . It will come handy
-Add that ip to /etc/hosts
+1. Goto this link
+https://raspberrytips.com/mail-server-raspberry-pi/
+
+2. Know your ip using ifconfig cmd . It will come handy later
+3. Add your server ip to /etc/hosts
 	192.168.1.7     example.com
 
 sudo apt-get install postfix
@@ -14,7 +17,7 @@ sudo nano /etc/postfix/main.cf
 	Change
 		myhostname= example.com
 	Add
-		relayhost = example.com
+		relayhost = example.com	## Doubt here
 
 sudo service postfix restart
 
@@ -85,7 +88,7 @@ nano /etc/postfix/main.cf
 		check_helo_access hash:/etc/postfix/helo_access
 
 sudo nano /etc/postfix/helo_access
-	192.168.1.7   REJECT # Enter your IP using ifconfig
+	192.168.1.7   REJECT # Enter your IP found in ifconfig
 	example.com   REJECT
 	smtp.example.com   REJECT
 	mail.example.com   REJECT
