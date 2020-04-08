@@ -1,0 +1,302 @@
+Know your ip uing ifconfig cmd . It will come handy
+Add that ip to /etc/hosts
+	192.168.1.7     example.com
+
+sudo apt-get install postfix
+	Internet site
+	example.com
+
+sudo nano /etc/postfix/main.cf
+	Replace
+		inet_protocols = all
+	By
+		inet_protocols = ipv4
+	Change
+		myhostname= example.com
+	Add
+		relayhost = example.com
+
+sudo service postfix restart
+
+sudo apt-get install telnet   # To test outgoing mail using telnet
+	telnet localhost 25
+		pi@raspberrypi:~ $ telnet localhost 25
+		Trying ::1...
+		Trying 127.0.0.1...
+		Connected to localhost.
+		Escape character is '^]'.
+		220 example.com ESMTP Postfix (Raspbian)
+		ehlo example.com
+		250-example.com
+		250-PIPELINING
+		250-SIZE 10240000
+		250-VRFY
+		250-ETRN
+		250-STARTTLS
+		250-ENHANCEDSTATUSCODES
+		250-8BITMIME
+		250-DSN
+		250 SMTPUTF8
+		mail from: pi@example.com
+		250 2.1.0 Ok
+		rcpt to: pi@example.com
+		250 2.1.5 Ok
+		data
+		354 End data with <CR><LF>.<CR><LF>
+		Subject: test
+		Test
+		.
+		250 2.0.0 Ok: queued as 44EAE1FE54
+		quit
+		221 2.0.0 Bye
+
+sudo apt-get install mailutils    # install mailutils
+	echo 'Test' | mail -s "Test mail command" pi@example.com
+
+sudo nano /etc/postfix/main.cf
+	Add these lines at the end of the file
+		home_mailbox = Maildir/
+		mailbox_command =
+
+sudo apt-get install dovecot-common dovecot-imapd
+	sudo maildirmake.dovecot /etc/skel/Maildir
+	sudo maildirmake.dovecot /etc/skel/Maildir/.Drafts
+	sudo maildirmake.dovecot /etc/skel/Maildir/.Sent
+	sudo maildirmake.dovecot /etc/skel/Maildir/.Spam
+	sudo maildirmake.dovecot /etc/skel/Maildir/.Trash
+	sudo maildirmake.dovecot /etc/skel/Maildir/.Templates
+	
+	sudo cp -r /etc/skel/Maildir /home/pi/
+	sudo chown -R pi:pi /home/pi/Maildir
+	sudo chmod -R 700 /home/pi/Maildir
+
+echo "Test" | mail -s "Test" pi@example.com # Testing the mail
+
+Secure the mail server
+
+nano /etc/postfix/main.cf
+	Add at the end of file
+		smtpd_helo_restrictions =
+		permit_mynetworks,
+		permit_sasl_authenticated,
+		reject_invalid_helo_hostname,
+		reject_non_fqdn_helo_hostname,
+		reject_unknown_helo_hostname,
+		check_helo_access hash:/etc/postfix/helo_access
+
+sudo nano /etc/postfix/helo_access
+	192.168.1.7   REJECT # Enter your IP using ifconfig
+	example.com   REJECT
+	smtp.example.com   REJECT
+	mail.example.com   REJECT
+
+sudo service postfix restart
+
+sudo nano /etc/dovecot/dovecot.conf
+	Replace
+	#listen = *, ::
+	By
+	listen = *
+
+sudo nano /etc/dovecot/conf.d/10-mail.conf
+	Replace
+	mail_location = mbox:~/mail:INBOX=/var/mail/%u
+	By
+	mail_location = maildir:~/Maildir
+
+sudo nano /etc/dovecot/conf.d/10-master.conf
+
+	Comment all lines from the default service auth paragraph (add # before each line)
+	Add these lines a the end of the file
+		service auth 
+		{
+        	unix_listener /var/spool/postfix/private/auth 
+		{
+                mode = 0660
+                user = postfix
+                group = postfix
+        	}
+		}
+
+sudo nano /etc/dovecot/conf.d/10-auth.conf
+	Uncomment and edit this line
+		#disable_plaintext_auth = yes
+	To become this one
+		disable_plaintext_auth = no
+	auth_mechanisms = plain login
+
+sudo nano /etc/postfix/main.cf
+	smtpd_sasl_type = dovecot
+	smtpd_sasl_path = private/auth
+	smtpd_sasl_auth_enable = yes
+
+sudo service postfix restart
+sudo service dovecot restart
+
+adduser test # password test
+
+We need to get our password in a base64 encoded format
+You can get it with this command:
+
+printf '\0%s\0%s' '[LOGIN]' '[PASSWORD]' | openssl base64 
+
+pi@raspberrypi:~ $ telnet localhost 25
+Trying ::1...
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+220 domain.com ESMTP Postfix (Raspbian)
+ehlo domain.com
+250-domain.com
+250-PIPELINING
+250-SIZE 10240000
+250-VRFY
+250-ETRN
+250-STARTTLS
+250-AUTH PLAIN LOGIN
+250-ENHANCEDSTATUSCODES
+250-8BITMIME
+250 DSN
+AUTH PLAIN AHRlc3QAcGFzc3dvcmQ=
+235 2.7.0 Authentication successful   ##### Issues here 
+mail from: me@domain.com
+250 2.1.0 Ok
+rcpt to: youremail@gmail.com
+250 2.1.5 Ok
+data
+354 End data with <CR><LF>.<CR><LF>
+Subject: test
+Test
+.
+250 2.0.0 Ok: queued as 44EAE1FE54
+quit
+221 2.0.0 Bye
+
+sudo nano /etc/dovecot/conf.d/10-master.conf
+
+	Enable listener on the port 993
+	The configuration should look like this
+	service imap-login {
+ 	 inet_listener imap {
+    	port = 143
+  	} 
+  	inet_listener imaps {
+   	 port = 993
+    	ssl = yes
+  	}
+	}
+sudo nano /etc/dovecot/conf.d/10-ssl.conf
+	Enable SSL by editing the first line of the file
+		ssl = yes
+	Then uncomment the certificate locations
+		ssl_cert = </etc/dovecot/dovecot.pem
+		ssl_key = </etc/dovecot/private/dovecot.pem
+	You also have to uncomment the ssl_protocols options to deny SSLv3
+		ssl_protocols = !SSLv3
+
+sudo service dovecot restart
+
+We need to generate our SSL certificate with these commands
+
+	cd /etc/dovecot
+	sudo openssl req -new -x509 -nodes -config /usr/share/dovecot/dovecot-openssl.cnf -out dovecot.pem -keyout private/dovecot.pem -days 365
+
+openssl s_client -connect localhost:993
+
+The login syntax is: 
+	a login [LOGIN] [PASSWORD]
+
+The full trace should look something like this:
+
+	* OK [CAPABILITY IMAP4rev1 LITERAL+ SASL-IR LOGIN-REFERRALS ID ENABLE IDLE AUTH=PLAIN AUTH=LOGIN] Dovecot ready.
+	a login pi password
+	a OK [CAPABILITY IMAP4rev1 LITERAL+ SASL-IR LOGIN-REFERRALS ID ENABLE IDLE SORT SORT=DISPLAY THREAD=REFERENCES THREAD=REFS THREAD=ORDEREDSUBJECT MULTIAPPEND URL-PARTIAL CATENATE UNSELECT CHILDREN NAMESPACE UIDPLUS LIST-EXTENDED I18NLEVEL=1 CONDSTORE QRESYNC ESEARCH ESORT SEARCHRES WITHIN CONTEXT=SEARCH LIST-STATUS BINARY MOVE SPECIAL-USE] Logged in
+	b select inbox
+	* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
+	* OK [PERMANENTFLAGS (\Answered \Flagged \Deleted \Seen \Draft \*)] Flags permitted.
+	* 3 EXISTS
+	* 0 RECENT
+	* OK [UNSEEN 1] First unseen.
+	* OK [UIDVALIDITY 1536038369] UIDs valid
+	* OK [UIDNEXT 4] Predicted next UID
+	b OK [READ-WRITE] Select completed (0.000 + 0.000 secs).
+	b logout
+	* BYE Logging out
+	b OK Logout completed (0.000 + 0.000 secs).
+	closed
+
+
+sudo at-get install thunderbird
+
+	add
+		pi
+		pi@example.com
+		k@l!
+	manual config
+		remove . from .example.com
+		for IMAP select port 993, auto detect
+		for SMTP(outgoing) select port 25, auto detect
+		Retest
+
+		Confirm the security exception
+
+	Similarly add other user accounts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
